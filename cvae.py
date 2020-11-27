@@ -211,11 +211,12 @@ def load_data():
     return (X_train, Y_train), (X_test, Y_test)
 
 
-def main(   lat_dim     = 4,
-            batch_size  = 256,
-            num_epochs  = 1000,
-            dim_big     = 512,
-            dim_small   = 128  ):
+def main(   lat_dim         = 4,
+            batch_size      = 256,
+            learning_rate   = 2.5e-4,
+            num_epochs      = 1000,
+            dim_big         = 512,
+            dim_small       = 128  ):
     
     (X_train, Y_train), (X_test, Y_test) = load_data()
     
@@ -228,7 +229,7 @@ def main(   lat_dim     = 4,
     autoencoder_model = vae.get_autoencoder_model()
     autoencoder_model.summary()
     
-    opt = optimizers.Adam(5e-4)
+    opt = optimizers.Adam(learning_rate)
     autoencoder_model.compile(opt, None)
     
     cbacks = []
