@@ -10,7 +10,7 @@ def kl_gaussians(mu_1,sigma_1, mu_2, sigma_2):
             + (sigma_1**2 + (mu_1-mu_2)**2)/(2*sigma_2**2) - 0.5
 
 def kl_std_gaussian(mu, sigma):
-    return -tf.math.log(sigma) + 0.5*(sigma**2 + mu**2) - 0.5
+    return  0.5*(sigma**2 + mu**2) - 0.5 -tf.math.log(sigma)
 
 
 class SamplingLoss(layers.Layer):
