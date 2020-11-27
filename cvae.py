@@ -1,11 +1,13 @@
 
 import tensorflow as tf
 from tensorflow.keras import layers,optimizers,models,callbacks
-from tensorflow.keras.datasets import mnist
 import numpy as np
 
 from vae_layers import (ConditionalSamplingLoss, XELoss,
                         Sampling, Reparameterize)
+
+
+
 
 
 class Encoder(layers.Layer):
@@ -129,84 +131,120 @@ class PlotSamples(callbacks.Callback):
         
 
 
+class CVAE:
+    def __init__(self, in_out_shape, num_classes, lat_dim, 
+                 enc_emb_dim, enc_hid_dim, 
+                 dec_emb_dim, dec_hid_dim):
+        
+        self.in_out_shape = in_out_shape
+        self.num_classes = num_classes
+        self.lat_dim = lat_dim
+        self.enc_emb_dim = enc_emb_dim
+        self.enc_hid_dim = enc_hid_dim
+        self.dec_emb_dim = dec_emb_dim
+        self.dec_hid_dim = dec_hid_dim
+        
+        self.encoder_layer = Encoder(self.num_classes, 
+                                     self.enc_emb_dim, self.enc_hid_dim, 
+                                     self.lat_dim)
+        self.decoder_layer = Decoder(self.num_classes, 
+                                     self.dec_emb_dim, self.dec_hid_dim,
+                                     self.in_out_shape)
+        self.prior_layer = Prior(self.num_classes, self.lat_dim)
+    
+    def get_encoder_model(self):
+        if hasattr(self, 'encoder_model'):
+            return self.encoder_model
+        
+        in_x = layers.Input(self.in_out_shape)
+        in_c = layers.Input( () )
+        
+        mu_q, sigma_q = self.encoder_layer([in_x, in_c])
+        self.encoder_model = models.Model([in_x, in_c], [mu_q, sigma_q])
+        
+        return self.encoder_model
+    
+    def get_decoder_model(self):
+        if hasattr(self, 'decoder_model'):
+            return self.decoder_model
+        
+        
+        in_e = layers.Input((self.lat_dim,))
+        in_c = layers.Input( () )
+        
+        mu_p, sigma_p = self.prior_layer(in_c)
+        z = Reparameterize()([in_e,mu_p,sigma_p])
+        
+        out = self.decoder_layer([z, in_c])
+        
+        self.decoder_model = models.Model([in_e,in_c],out)
+        return self.decoder_model
+    
+    def get_autoencoder_model(self):
+        if hasattr(self, 'autoencoder_model'):
+            return self.autoencoder_model
+        
+        in_x = layers.Input(self.in_out_shape)
+        in_c = layers.Input( () )
+        
+        mu_q, sigma_q = self.encoder_layer([in_x, in_c])
+        mu_p, sigma_p = self.prior_layer(in_c)
+        
+        z = Sampling()([mu_q,sigma_q])
+        z,*_ = ConditionalSamplingLoss()([z,mu_q,sigma_q,mu_p,sigma_p])
+        
+        out = self.decoder_layer([z, in_c])
+        out = XELoss()([in_x, out])
+        
+        self.autoencoder_model = models.Model([in_x,in_c],out)
+        
+        return self.autoencoder_model
+                
 
-# Load Data
-(X_train, Y_train), (X_test, Y_test) = mnist.load_data()
-X_train = X_train.astype('float32')/255.
-X_test = X_test.astype('float32')/255.
 
 
-lat_dim = 4
-batch_size = 256
-num_epochs = 1000
-num_classes = 10
-dim_big = 512
-dim_small = 128
+def load_data():
+    from tensorflow.keras.datasets import mnist
+    (X_train, Y_train), (X_test, Y_test) = mnist.load_data()
+    X_train = X_train.astype('float32')/255.
+    X_test = X_test.astype('float32')/255.
+    return (X_train, Y_train), (X_test, Y_test)
+
+
+def main(   lat_dim     = 4,
+            batch_size  = 256,
+            num_epochs  = 1000,
+            dim_big     = 512,
+            dim_small   = 128  ):
+    
+    (X_train, Y_train), (X_test, Y_test) = load_data()
+    
+    vae = CVAE(in_out_shape = X_train.shape[1:],
+              num_classes = Y_train.max()+1, 
+              lat_dim = lat_dim,
+              enc_emb_dim = dim_big, enc_hid_dim = dim_small,
+              dec_emb_dim = dim_small, dec_hid_dim = dim_big)
+    
+    autoencoder_model = vae.get_autoencoder_model()
+    autoencoder_model.summary()
+    
+    opt = optimizers.Adam(5e-4)
+    autoencoder_model.compile(opt, None)
+    
+    cbacks = []
+    cbacks.append(PlotSamples(vae.get_decoder_model(), lat_dim))
+    
+    autoencoder_model.fit([X_train,Y_train], None,
+                          batch_size=batch_size, epochs=num_epochs, 
+                          validation_data=([X_test,Y_test], None), 
+                          callbacks=cbacks)
+
+
+if __name__ == '__main__':
+    import sys
+    main(*sys.argv[1:])
 
 
 
-encoder_layer = Encoder(num_classes, dim_big, dim_small, lat_dim)
-decoder_layer = Decoder(num_classes, dim_small, dim_big, X_train.shape[1:])
-prior_layer = Prior(num_classes, lat_dim)
-
-# Encoder Model
-in_x = layers.Input(X_train.shape[1:])
-in_c = layers.Input( () )
-
-mu_q, sigma_q = encoder_layer([in_x, in_c])
-encoder_model = models.Model([in_x, in_c], [mu_q, sigma_q])
 
 
-# Decoder model
-in_e = layers.Input((lat_dim,))
-in_c = layers.Input( () )
-
-mu_p, sigma_p = prior_layer(in_c)
-z = Reparameterize()([in_e,mu_p,sigma_p])
-
-out = decoder_layer([z, in_c])
-
-decoder_model = models.Model([in_e,in_c],out)
-
-
-
-
-# Autoencoder Model
-in_x = layers.Input(X_train.shape[1:])
-in_c = layers.Input( () )
-
-mu_q, sigma_q = encoder_layer([in_x, in_c])
-mu_p, sigma_p = prior_layer(in_c)
-
-z = Sampling()([mu_q,sigma_q])
-z,*_ = ConditionalSamplingLoss()([z,mu_q,sigma_q,mu_p,sigma_p])
-
-out = decoder_layer([z, in_c])
-out = XELoss()([in_x, out])
-
-autoencoder_model = models.Model([in_x,in_c],out)
-
-
-autoencoder_model.summary()
-
-opt = optimizers.Adam(5e-4)
-autoencoder_model.compile(opt, None)
-
-cbacks = []
-cbacks.append(PlotSamples(decoder_model, lat_dim))
-
-autoencoder_model.fit([X_train,Y_train], None,
-                      batch_size=batch_size, epochs=num_epochs, 
-                      validation_data=([X_test,Y_test], None), 
-                      callbacks=cbacks)
-
-
-# codes=enc_model.predict(X_test,batch_size=512,verbose=2)
-# from sklearn.manifold import TSNE
-# tsne=TSNE(verbose=2,perplexity=100)
-# c2d=tsne.fit_transform(codes)
-# plt.figure()
-# for k in range(10):
-#     x,y=c2d[Y_test==k].T
-#     plt.scatter(x,y,marker='x')
-# plt.legend(list(map(str,range(10))))
