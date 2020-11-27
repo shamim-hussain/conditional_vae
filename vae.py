@@ -4,7 +4,7 @@ from tensorflow.keras import layers,optimizers,models,callbacks
 from tensorflow.keras.datasets import mnist
 import numpy as np
 
-from vae_layers import ConditionalSamplingLoss, XELoss
+from vae_layers import SamplingLoss, XELoss
 
 
 class Sampling(layers.Layer):
@@ -14,34 +14,24 @@ class Sampling(layers.Layer):
         z = eps*sigma + mu
         return z
 
-class Reparameterize(layers.Layer):
-    def call(self, inputs):
-        eps, mu, sigma = inputs
-        z = eps*sigma + mu
-        return z
-
-
 class Encoder(layers.Layer):
-    def __init__(self, num_classes, emb_dim, hid_dim, lat_dim, **kwargs):
+    def __init__(self, emb_dim, hid_dim, lat_dim, **kwargs):
         super().__init__(**kwargs)
         
-        self.num_classes = num_classes
         self.emb_dim = emb_dim
         self.hid_dim = hid_dim
         self.lat_dim = lat_dim
         
-        self.emb_x = layers.Dense(self.emb_dim)
-        self.emb_c = layers.Embedding(self.num_classes,self.emb_dim)
-        
+        self.dense_e = layers.Dense(self.emb_dim)        
         self.dense_h = layers.Dense(self.hid_dim)
         self.dense_l = layers.Dense(self.lat_dim*2)
     
     def call(self,inputs):
-        in_x, in_c = inputs
+        in_x = inputs
         
         in_x = tf.reshape(in_x, [-1, np.prod(in_x.shape.as_list()[1:])])
         
-        emb = tf.nn.relu(self.emb_x(in_x) + self.emb_c(in_c))
+        emb = tf.nn.relu(self.dense_e(in_x))
         hid = tf.nn.relu(self.dense_h(emb))
         
         lat = self.dense_l(hid)
@@ -49,49 +39,24 @@ class Encoder(layers.Layer):
         sigma_q = tf.exp(lat[..., self.lat_dim: ])
         
         return mu_q, sigma_q
-
-
-
-class Prior(layers.Layer):
-    def __init__(self, num_classes, lat_dim, **kwargs):
-        super().__init__(**kwargs)
-        
-        self.num_classes = num_classes
-        self.lat_dim = lat_dim
-        
-        self.emb_c = layers.Embedding(self.num_classes, self.lat_dim*2)
     
-    def call(self, inputs):
-        in_c = inputs
-        
-        emb = self.emb_c(in_c)
-        mu_p = emb[..., :self.lat_dim]
-        sigma_p = tf.exp(emb[..., self.lat_dim: ])
-        
-        return mu_p, sigma_p
-
-
-
 
 class Decoder(layers.Layer):
-    def __init__(self, num_classes, emb_dim, hid_dim, out_dim, **kwargs):
+    def __init__(self, emb_dim, hid_dim, out_dim, **kwargs):
         super().__init__(**kwargs)
         
-        self.num_classes = num_classes
         self.emb_dim = emb_dim
         self.hid_dim = hid_dim
         self.out_dim = tuple(out_dim)
     
-        self.emb_z = layers.Dense(self.emb_dim)
-        self.emb_c = layers.Embedding(self.num_classes,self.emb_dim)
-        
+        self.dense_e = layers.Dense(self.emb_dim)        
         self.dense_h = layers.Dense(self.hid_dim)
         self.dense_o = layers.Dense(np.prod(self.out_dim))
     
     def call(self, inputs):
-        in_z, in_c = inputs
+        in_z = inputs
         
-        emb = tf.nn.relu(self.emb_z(in_z) + self.emb_c(in_c))
+        emb = tf.nn.relu(self.dense_e(in_z))
         hid = tf.nn.relu(self.dense_h(emb))
         
         out = tf.nn.sigmoid(self.dense_o(hid))
@@ -107,7 +72,6 @@ class PlotSamples(callbacks.Callback):
                  freq=10, figsize=(10,10)):
         self.decoder_model = decoder_model
         self.lat_dim = lat_dim
-        self.num_classes = num_classes
         self.n_row = n_row
         self.n_col = n_col
         self.freq = freq
@@ -120,9 +84,7 @@ class PlotSamples(callbacks.Callback):
             return
         
         e = np.random.randn(self.num_samples,self.lat_dim)
-        c = (np.arange(self.num_samples) % self.num_classes).astype(np.float32)
-        
-        out = self.decoder_model.predict_on_batch([e,c])
+        out = self.decoder_model.predict_on_batch(e)
         
         img = out.reshape(self.n_row, self.n_col, *out.shape[1:])\
                 .transpose(0,2,1,3).reshape(self.n_row*out.shape[1],
@@ -152,52 +114,38 @@ X_test = X_test.astype('float32')/255.
 lat_dim = 4
 batch_size = 256
 num_epochs = 1000
-num_classes = 10
 dim_big = 512
 dim_small = 128
 
 
 
-encoder_layer = Encoder(num_classes, dim_big, dim_small, lat_dim)
-decoder_layer = Decoder(num_classes, dim_small, dim_big, X_train.shape[1:])
-prior_layer = Prior(num_classes, lat_dim)
+encoder_layer = Encoder(dim_big, dim_small, lat_dim)
+decoder_layer = Decoder(dim_small, dim_big, X_train.shape[1:])
 
 # Encoder Model
 in_x = layers.Input(X_train.shape[1:])
-in_c = layers.Input( () )
-
-mu_q, sigma_q = encoder_layer([in_x, in_c])
-encoder_model = models.Model([in_x, in_c], [mu_q, sigma_q])
+mu_q, sigma_q = encoder_layer(in_x)
+encoder_model = models.Model(in_x, [mu_q, sigma_q])
 
 
 # Decoder model
-in_e = layers.Input((lat_dim,))
-in_c = layers.Input( () )
-
-mu_p, sigma_p = prior_layer(in_c)
-z = Reparameterize()([in_e,mu_p,sigma_p])
-
-out = decoder_layer([z, in_c])
-
-decoder_model = models.Model([in_e,in_c],out)
+in_z = layers.Input((lat_dim,))
+out = decoder_layer(in_z)
+decoder_model = models.Model(in_z,out)
 
 
 
 
 # Autoencoder Model
 in_x = layers.Input(X_train.shape[1:])
-in_c = layers.Input( () )
 
-mu_q, sigma_q = encoder_layer([in_x, in_c])
-mu_p, sigma_p = prior_layer(in_c)
-
+mu_q, sigma_q = encoder_layer(in_x)
 z = Sampling()([mu_q,sigma_q])
-z,*_ = ConditionalSamplingLoss()([z,mu_q,sigma_q,mu_p,sigma_p])
-
-out = decoder_layer([z, in_c])
+z,*_ = SamplingLoss()([z,mu_q,sigma_q])
+out = decoder_layer(z)
 out = XELoss()([in_x, out])
 
-autoencoder_model = models.Model([in_x,in_c],out)
+autoencoder_model = models.Model(in_x, out)
 
 
 autoencoder_model.summary()
@@ -208,9 +156,9 @@ autoencoder_model.compile(opt, None)#, run_eagerly=True
 cbacks = []
 cbacks.append(PlotSamples(decoder_model, lat_dim))
 
-autoencoder_model.fit([X_train,Y_train], None,
+autoencoder_model.fit(X_train, None,
                       batch_size=batch_size, epochs=num_epochs, 
-                      validation_data=([X_test,Y_test], None), 
+                      validation_data=(X_test, None), 
                       callbacks=cbacks)
 
 

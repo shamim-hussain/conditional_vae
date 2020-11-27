@@ -23,8 +23,8 @@ class SamplingLoss(layers.Layer):
         x,mean,std=inputs
         posterior=tfp.distributions.Normal(mean, tf.abs(std)+1e-9)
         
-        compress_loss = tf.reduce_mean(tf.reduce_sum(
-            tfp.distributions.kl_divergence(posterior,self.prior),axis=(-1,-2)))
+        compress_loss = tf.reduce_sum(tf.reduce_mean(
+            tfp.distributions.kl_divergence(posterior,self.prior),axis=0))
         
         self.add_loss(compress_loss)
         
@@ -39,8 +39,8 @@ class ConditionalSamplingLoss(layers.Layer):
         prior = tfp.distributions.Normal(mean_p, tf.abs(std_p)+1e-9)
         posterior = tfp.distributions.Normal(mean_q, tf.abs(std_q)+1e-9)
         
-        compress_loss = tf.reduce_mean(tf.reduce_sum(
-            tfp.distributions.kl_divergence(posterior,prior),axis=(-1,-2)))
+        compress_loss = tf.reduce_sum(tf.reduce_mean(
+            tfp.distributions.kl_divergence(posterior,prior),axis=0))
         
         self.add_loss(compress_loss)
         
