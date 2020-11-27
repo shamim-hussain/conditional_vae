@@ -107,6 +107,7 @@ class PlotSamples(callbacks.Callback):
                  freq=10, figsize=(10,10)):
         self.decoder_model = decoder_model
         self.lat_dim = lat_dim
+        self.num_classes = num_classes
         self.n_row = n_row
         self.n_col = n_col
         self.freq = freq
@@ -118,19 +119,22 @@ class PlotSamples(callbacks.Callback):
         if epoch % self.freq:
             return
         
-        e = np.random.normal(size=(self.num_samples,self.lat_dim))
-        c = np.arange(self.num_samples) % self.num_classes
+        e = np.random.randn(self.num_samples,self.lat_dim)
+        c = (np.arange(self.num_samples) % self.num_classes).astype(np.float32)
         
         out = self.decoder_model.predict_on_batch([e,c])
         
-        img = out.reshape(self.n_row, self.n_col, *out.shape)\
-                .transpose(0,2,1,3).reshape(self.n_row*out.shape[0],
-                                            self.n_col*out.shape[1])
+        img = out.reshape(self.n_row, self.n_col, *out.shape[1:])\
+                .transpose(0,2,1,3).reshape(self.n_row*out.shape[1],
+                                            self.n_col*out.shape[2])
         
         plt.figure(figsize=(10,10))
         plt.imshow(img, cmap='gray')
         plt.axis('off')
         plt.title(f'Epoch:{epoch}')
+        
+        plt.show()
+        plt.pause(0.1)
         
         figs=plt.get_fignums()
         if len(figs)>5: 
@@ -204,8 +208,10 @@ autoencoder_model.compile(opt, None)#, run_eagerly=True
 cbacks = []
 cbacks.append(PlotSamples(decoder_model, lat_dim))
 
-autoencoder_model.fit(X_train, None, batch_size=batch_size, epochs=num_epochs, 
-                      validation_data=(X_test, None), callbacks=cbacks)
+autoencoder_model.fit([X_train,Y_train], None,
+                      batch_size=batch_size, epochs=num_epochs, 
+                      validation_data=([X_test,Y_test], None), 
+                      callbacks=cbacks)
 
 
 # codes=enc_model.predict(X_test,batch_size=512,verbose=2)

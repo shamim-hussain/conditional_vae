@@ -53,10 +53,10 @@ class XELoss(layers.Layer):
         y_true, y_pred = inputs
         losses_elem=keras.backend.binary_crossentropy(y_true,y_pred)
         
-        XEloss = tf.reduce_sum(
+        loss = tf.reduce_sum(
                 tf.reduce_mean(losses_elem,
                                 axis=0))
-        self.add_loss(XEloss)
+        self.add_loss(loss)
         return y_pred
     
 class L1Loss(layers.Layer):
