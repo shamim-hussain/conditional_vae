@@ -4,21 +4,8 @@ from tensorflow.keras import layers,optimizers,models,callbacks
 from tensorflow.keras.datasets import mnist
 import numpy as np
 
-from vae_layers import ConditionalSamplingLoss, XELoss
-
-
-class Sampling(layers.Layer):
-    def call(self, inputs):
-        mu, sigma = inputs
-        eps = tf.random.normal(tf.shape(mu))
-        z = eps*sigma + mu
-        return z
-
-class Reparameterize(layers.Layer):
-    def call(self, inputs):
-        eps, mu, sigma = inputs
-        z = eps*sigma + mu
-        return z
+from vae_layers import (ConditionalSamplingLoss, XELoss,
+                        Sampling, Reparameterize)
 
 
 class Encoder(layers.Layer):
@@ -203,7 +190,7 @@ autoencoder_model = models.Model([in_x,in_c],out)
 autoencoder_model.summary()
 
 opt = optimizers.Adam(5e-4)
-autoencoder_model.compile(opt, None)#, run_eagerly=True
+autoencoder_model.compile(opt, None)
 
 cbacks = []
 cbacks.append(PlotSamples(decoder_model, lat_dim))

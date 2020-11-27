@@ -41,6 +41,20 @@ class ConditionalSamplingLoss(layers.Layer):
 
 
 
+class Sampling(layers.Layer):
+    def call(self, inputs):
+        mu, sigma = inputs
+        eps = tf.random.normal(tf.shape(mu))
+        z = eps*sigma + mu
+        return z
+
+class Reparameterize(layers.Layer):
+    def call(self, inputs):
+        eps, mu, sigma = inputs
+        z = eps*sigma + mu
+        return z
+
+
 class XELoss(layers.Layer):
     def call(self, inputs):
         y_true, y_pred = inputs

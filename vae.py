@@ -4,15 +4,10 @@ from tensorflow.keras import layers,optimizers,models,callbacks
 from tensorflow.keras.datasets import mnist
 import numpy as np
 
-from vae_layers import SamplingLoss, XELoss
+from vae_layers import SamplingLoss, XELoss, Sampling
 
 
-class Sampling(layers.Layer):
-    def call(self, inputs):
-        mu, sigma = inputs
-        eps = tf.random.normal(tf.shape(mu))
-        z = eps*sigma + mu
-        return z
+
 
 class Encoder(layers.Layer):
     def __init__(self, emb_dim, hid_dim, lat_dim, **kwargs):
