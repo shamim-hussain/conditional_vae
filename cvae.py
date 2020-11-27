@@ -242,8 +242,17 @@ def main(   lat_dim         = 4,
 
 
 if __name__ == '__main__':
-    import sys
-    main(*sys.argv[1:])
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-lat_dim', type=int, default=4)
+    parser.add_argument('-batch_size', type=int, default=256)
+    parser.add_argument('-learning_rate', type=float, default=2.5e-4)
+    parser.add_argument('-num_epochs', type=int, default=1000)
+    parser.add_argument('-dim_big', type=int, default=512)
+    parser.add_argument('-dim_small', type=int, default=128)
+    
+    config = parser.parse_args()
+    main(**config.__dict__)
 
 
 
